@@ -1,0 +1,317 @@
+import tkinter as tk
+import pandas as pd
+from tkinter import ttk 
+import math, datetime, re, json, csv, os
+from openai import OpenAI
+from tkinter import messagebox
+
+def primeira_maiuscula(texto:str):
+
+    texto = str(texto)
+    texto_list = texto.split()
+    for i in range(len(texto_list)):
+        if not (texto_list[i][0] in '0123456789') and len(texto_list[i]) > 2:
+            texto_list[i] = texto_list[i].capitalize()
+    
+    return ' '.join(s for s in texto_list)
+
+def campo_real_formatado(entrada):
+    entrada = str('%.2f' %  entrada).replace('.', ',')
+
+    return entrada
+
+def ai_SEO(nome_peca, tentativas = 0):
+    if nome_peca == '' or tentativas > 5:
+        return '\{\}'
+    ret = ''
+    if os.path.isfile(f'produtos_seo/{nome_peca}.txt'):
+        try:
+            with open(f'produtos_seo/{nome_peca}.txt', 'r') as file:
+                ret = file.read()
+                print('Lido do arquivo:')
+        except UnicodeDecodeError:
+            messagebox.showerror('Erro ao carregar o arquivo da peça', nome_peca)
+
+    if ret == '':
+        #client = OpenAI api_key Chave_da_API_AQUI
+        messages=[
+            {"role": "system", "content": "Comporte-se como conhecedor de tecnologias de motores de busca como Google e Bing para melhor experiência de usuário."},
+            {"role": "user", "content": f"A partir do título de produto '{nome_peca}', \
+            gere de 10 a 15 palavras-chave elaboradas e relevantes para SEO, uma meta description otimizada com até 160 caracteres, \
+            e uma lista de meta keywords limitada a 300 caracteres. \
+            As palavras-chave devem refletir termos de busca relevantes, a meta description deve destacar benefícios e características do produto, \
+            e as meta keywords devem ser termos específicos relacionados ao produto.        \
+            Retorne no formato JSON com as chaves 'metadescription', 'palavras-chaves' e 'meta-keywords', sendo as duas últimas sempre uma lista."}
+        ]
+
+        completion = client.chat.completions.create(
+                        model=in_modelo_gpt.get(),
+                        messages=messages,
+                        temperature=float(spin_temperature.get()),
+                        max_tokens=500,
+                        top_p=float(spin_top_p.get()),
+                        frequency_penalty=float(spin_frequency_penalty.get()),
+                        presence_penalty=float(spin_presence_penalty.get()),
+        )
+
+        ret = completion.choices[0].message.content.replace('\n', '').replace('  ','').replace("'", '"')
+        ret = ret[ret.find('{') : ret.find('}')+1]
+
+        try:
+            x = json.loads(ret)
+        except json.JSONDecodeError:
+            ret = ai_SEO(nome_peca, tentativas + 1)
+        
+        with open(f'produtos_seo/{nome_peca}.txt', 'w', encoding='utf-8') as file:
+            file.write(ret)
+    print(ret)
+    return ret
+
+def retorna_by_json(strJson, chave):
+    if strJson == '':
+        return ''
+    try:
+        object = json.loads(strJson)
+        return object[chave]
+    except json.JSONDecodeError:
+        messagebox.showerror('Erro ao carregar JSON', strJson)
+    except KeyError:
+        messagebox.showerror('Erro ao acessar a chave ' + chave, strJson)
+    return ''
+
+def cria_df_SEO(df_origin : pd.DataFrame):
+    if not os.path.exists('produtos_seo'):
+        os.makedirs('produtos_seo')
+
+    df_retorno = pd.DataFrame()
+    try:
+        df_retorno['SKU'] = df_origin['Codigo']
+        df_retorno['Titulo (Pagina)'] = df_origin['Titulo']
+        df_retorno['Titulo SEO'] = df_origin['Titulo']
+        df_retorno['retorno_ai_SEO'] = df_origin['Titulo'].apply(ai_SEO)
+        df_retorno['Meta-Description'] = df_retorno['retorno_ai_SEO'].apply(lambda x: retorna_by_json(x, 'metadescription'))
+        df_retorno['Meta-Keywords'] = df_retorno['retorno_ai_SEO'].apply(lambda x: ', '.join(retorna_by_json(x, 'meta-keywords')))
+        df_retorno['Palavras Chave'] = df_retorno['retorno_ai_SEO'].apply(lambda x: ', '.join(retorna_by_json(x, 'palavras-chaves')))
+        df_retorno['Titulo Produto x Loja'] = df_origin['Titulo']
+    except Exception as err:
+        messagebox.showerror('Erro durante a geração do arquivo de SEO', err)
+
+    df_retorno.drop('retorno_ai_SEO', axis=1, inplace=True)
+    return df_retorno
+
+def coloca_aspas_arquivo(file_name):
+    with open(file_name, 'r') as f:
+        lines = f.readlines()
+        for i, line in enumerate(lines):
+            contents_list = str(line) .split(';')
+            content_new = []
+            for val in contents_list:
+                content_new.append(val if str(val).count(' ') == 0 else '"' + val + '"')
+            lines[i] = ';'.join(content_new)
+
+    with open(file_name, 'w') as f:
+        for line in lines:
+            f.write(line)
+
+def convert_to_excel():
+    tipo_moto = link_tipo_moto.curselection()[0]
+
+    variacao_titulo_ordem = variacao_titulo.get().split(',')
+
+    url_for_pandas_options  = ['1ec7kbpEFrCC637clqGg1d-CzkGQ7zWnnNN6FUMXhPmI', '1bA5U0VuCXwl_5N1VS5dqGNwv0y5ZfiepH9SrAKZPDw4', '1qvDd1kKuwb9A-etUUFJIY6lnj6U7wxtw6J-s4i6vkuE']
+    link = url_for_pandas_options[tipo_moto]
+    url_for_pandas = f'https://docs.google.com/spreadsheets/d/{link}/export?format=xlsx'
+    df_origin = pd.read_excel(url_for_pandas)#.head(378)
+
+    df_produto = pd.DataFrame()
+
+    df_produto['Codigo'] = df_origin['N.MOTO']
+    df_produto['Codigo Pai'] = df_produto['Codigo'].astype('str') + '-P'
+    df_produto['Marca'] = df_origin['MARCA'].apply(primeira_maiuscula)
+    df_produto['Nome'] = df_origin['PEÇA'].apply(primeira_maiuscula) + ' ' + df_origin['MODELO'].apply(primeira_maiuscula)
+    
+    
+    df_produto['Titulo'] = df_origin[variacao_titulo_ordem[0]].apply(primeira_maiuscula) + ' ' \
+                            + df_origin[variacao_titulo_ordem[1]].apply(primeira_maiuscula) + ' ' \
+                            + df_origin[variacao_titulo_ordem[2]].apply(primeira_maiuscula) + ' ' \
+                            + df_origin['ANO'].apply(lambda x : str(x)[:4]) \
+                            + df_origin['CLASS'].apply(lambda x: ' com avaria' if x in ('B', 'C') else '')
+    df_produto['Titulo Complemento'] = ''
+    df_produto['Categoria Principal'] = entry_cat.get()
+    df_produto['Modelo'] = df_origin['MODELO'].apply(primeira_maiuscula)
+    df_produto['Palavra Chave'] = ''
+    df_produto['Derivacao Principal'] = 'único'
+    df_produto['Valor Derivacao Principal'] = 'único'
+    df_produto['Derivacao Secundaria'] = ''
+    df_produto['Valor Derivacao Secundaria'] = ''
+    df_produto['Data Lancamento'] = ''
+    df_produto['Peso (Kg)'] = df_origin['Peso'].apply(campo_real_formatado)
+    df_produto['Altura (Cm)'] = df_origin['Altura'].apply(campo_real_formatado)
+    df_produto['Largura (Cm)'] = df_origin['Largura'].apply(campo_real_formatado)
+    df_produto['Comprimento (Cm)'] = df_origin['Comprimento'].apply(campo_real_formatado)
+    df_produto['Unidade Medida'] = ''
+    df_produto['NCM'] = 87141000
+    df_produto['CEST'] = 107600
+    df_produto['Origem Fiscal'] = 0
+    df_produto['PIS'] = ''
+    df_produto['COFINS'] = ''
+    df_produto['EAN'] = ''
+    df_produto['Ativo'] = 's'
+    df_produto['Descricao'] = df_origin.apply(lambda x:
+                f"<p>Marca: {x['MARCA']} <br> Modelo: {x['MODELO']} <br> Ano: {int(x['ANO']) if not math.isnan(x['ANO']) else ''} <br> Motocicleta desmontada: {str(x['N.MOTO'])[0:-3]} <br> Classificação: {x['CLASS']}  <br> Observação: {x['OBS'] if isinstance(x['OBS'], str) else ''}  </p>\
+                <p>Aqui, a transparência é a nossa prioridade - o que você vê é exatamente o que você vai receber em sua casa!</p>\
+                <p>Nosso Compromisso Ambiental:</p>\
+                <p>Somos um Centro de Desmontagem Veicular Legalizado, operando de forma responsável na reciclagem de motocicletas. Adquirimos nossos veículos legalmente de leilões, seguranças e pessoas físicas, todos os processos são efetuados em conformidade com a legislação vigente.</p>\
+                <p>Processo de Avaliação:<br> A (Excelente): Peças em perfeitas condições de reutilização.<br> B (Bom): Boas condições de reutilização, com possíveis sinais de desgaste e ou que passaram por reparos.<br> C (Regular): Peças que necessitam de algum tipo de reparo ou para retirada de partes.</p>\
+                <p>Garantia e Procedência:<br> Todas as peças acompanham nota fiscal.<br> Garantia de três meses contra qualquer defeito que impossibilite a reutilização.</p>\
+                <p>Ao escolher uma peça usada/seminova, você contribui para o meio ambiente. Faça parte dessa iniciativa sustentável!</p>", axis=1)
+
+    df_produto['Descricao Resumida'] = ''
+    df_produto['URL Pagina'] = ''
+    df_produto['Preco Antigo'] = df_origin['PREÇO'].apply(campo_real_formatado)
+    df_produto['Preco Venda'] = df_origin['PREÇO'].apply(lambda x: campo_real_formatado(x*1.08))
+    df_produto['Estoque Fisico'] = df_origin['QUANTIDADE'].apply(lambda x: str(int(x)) if not math.isnan(x) else None)
+    df_produto['Estoque Virtual'] = ''
+    df_produto['Custo Virtual'] = ''
+    df_produto['Custo Medio'] = ''
+    df_produto['Meta Description'] = ''
+    df_produto['Garantia'] = 3
+    df_produto['Acompanha'] = ''
+
+    df_produto = df_produto.dropna()
+   
+    dict_caracteristica = {'Número de peça': None,
+                           'Origem' : 'Brasil',
+                           'Tipo de veículo' : 'Moto/Quadriciclo',
+                           'Tipo de garantia' : 'Garantia do vendedor',
+                           'Condição do item' : 'Usado',
+                           'É kit' : 'Não'}
+    
+    codigo_list = df_produto['Codigo'].to_list()
+
+    valor_list          = [codigo if v is None else v for v in dict_caracteristica.values() for codigo in codigo_list]
+    caracteristica_list = [c for c in dict_caracteristica.keys() for codigo in codigo_list]
+    df_caracteristica = pd.DataFrame(
+        {
+            'Codigo Produto' : codigo_list * len(dict_caracteristica),
+            'Caracteristica' : caracteristica_list,
+            'Valor' : valor_list
+        }
+    )
+
+    file_name = datetime.datetime.now().strftime("%d%m%Y_%H%M") + '.csv'
+    file_produto = 'produto_' + file_name
+    df_produto.to_csv(file_produto, index=False, encoding='utf-8', sep=';')
+    file_caracteristica = 'caracteristica_' + file_name
+    df_caracteristica.to_csv(file_caracteristica, index=False, encoding='utf-8', sep=';')
+
+    df_SEO = cria_df_SEO(df_produto)
+    file_SEO = 'SEO_' + file_name
+    df_SEO.to_csv(file_SEO, index=False, encoding='utf-8', sep=';', quoting=csv.QUOTE_NONE)
+    
+    coloca_aspas_arquivo(file_produto)
+    #coloca_aspas_arquivo(file_caracteristica)
+
+if __name__ == '__main__':
+    import tkinter as tk
+    from tkinter import ttk
+
+    window = tk.Tk()
+    window.title(" -- #### IPPE MOTOS #### --")
+    window.geometry("572x742")
+
+    # Frame para escolha do tipo de moto
+    frame1 = tk.Frame(window, pady=10)
+    frame1.pack(fill='x')
+    tk.Label(frame1, text="Escolha o tipo de moto:").pack(side='top')
+    link_tipo_moto = tk.Listbox(frame1, height=3, width=50, borderwidth=3)
+    link_tipo_moto.insert(0, 'Esportiva 250,300cc')
+    link_tipo_moto.insert(1, 'Custom dois cilindros')
+    link_tipo_moto.insert(2, 'Esportiva 4 cilindros')
+    link_tipo_moto.pack(side='top')
+
+    # Frame para informação da categoria
+    frame2 = tk.Frame(window, pady=10)
+    frame2.pack(fill='x')
+    tk.Label(frame2, text="Informe a Categoria:").pack(side='top')
+    entry_cat = tk.Entry(frame2, width=50, borderwidth=3)
+    entry_cat.pack(side='top')
+
+    # Frame para variação do título
+    frame3 = tk.Frame(window, pady=10)
+    frame3.pack(fill='x')
+    ttk.Label(frame3, text="Selecione a variação para o Título:").pack(side='top')
+    variacao_titulo = ttk.Combobox(frame3, width=50)
+    variacao_titulo['values'] = ['PEÇA,MARCA,MODELO,ANO',
+                                 'PEÇA,MODELO,MARCA,ANO',
+                                 'MARCA,MODELO,PEÇA,ANO']
+    variacao_titulo.current(0)
+    variacao_titulo.pack(side='top')
+
+    # Frame para seleção do modelo GPT
+    frame4 = tk.Frame(window, pady=10)
+    frame4.pack(fill='x')
+    ttk.Label(frame4, text="Selecione o modelo do chat GPT a ser usado:").pack(side='top')
+    modelos_gpt = [
+        "gpt-4",
+        "gpt-4-0125-preview",
+        "gpt-4-turbo-preview",
+        "gpt-4-1106-preview",
+        "gpt-4-vision-preview",
+        "gpt-4-0314",
+        "gpt-4-0613",
+        "gpt-4-32k",
+        "gpt-4-32k-0314",
+        "gpt-4-32k-0613",
+        "gpt-3.5-turbo",
+        "gpt-3.5-turbo-16k",
+        "gpt-3.5-turbo-0301",
+        "gpt-3.5-turbo-0613",
+        "gpt-3.5-turbo-1106",
+        "gpt-3.5-turbo-0125",
+        "gpt-3.5-turbo-16k-0613",
+    ]
+    in_modelo_gpt = ttk.Combobox(frame4, width=50)
+    in_modelo_gpt['values'] = modelos_gpt
+    in_modelo_gpt.current(0)
+    in_modelo_gpt.pack(side='top')
+
+    # Frame para configurações avançadas (temperatura, top_p, etc)
+    frame5 = tk.Frame(window, pady=10)
+    frame5.pack(fill='x')
+
+    # Configurações de temperatura com Spinbox
+    tk.Label(frame5, text="Temperature:").pack(side='top')
+    spin_temperature = tk.Spinbox(frame5, from_=0.0, to=1.0, increment=0.1, width=50, format="%.1f")
+    spin_temperature.delete(0, 'end')
+    spin_temperature.insert(0, '0.7')
+    spin_temperature.pack(side='top')
+
+    # Configurações de top_p com Spinbox
+    tk.Label(frame5, text="Top P:").pack(side='top')
+    spin_top_p = tk.Spinbox(frame5, from_=0.0, to=1.0, increment=0.1, width=50, format="%.1f")
+    spin_top_p.delete(0, 'end')
+    spin_top_p.insert(0, '1.0')
+    spin_top_p.pack(side='top')
+
+    # Configurações de frequency_penalty com Spinbox
+    tk.Label(frame5, text="Frequency Penalty:").pack(side='top')
+    spin_frequency_penalty = tk.Spinbox(frame5, from_=-2.0, to=2.0, increment=0.1, width=50, format="%.1f")
+    spin_frequency_penalty.delete(0, 'end')
+    spin_frequency_penalty.insert(0, '0.5')
+    spin_frequency_penalty.pack(side='top')
+
+    # Configurações de presence_penalty com Spinbox
+    tk.Label(frame5, text="Presence Penalty:").pack(side='top')
+    spin_presence_penalty = tk.Spinbox(frame5, from_=-2.0, to=2.0, increment=0.1, width=50, format="%.1f")
+    spin_presence_penalty.delete(0, 'end')
+    spin_presence_penalty.insert(0, '0.5')
+    spin_presence_penalty.pack(side='top')
+
+    # Frame para botão de execução
+    button_frame = tk.Frame(window, pady=20)
+    button_frame.pack(fill='x')
+    button = tk.Button(button_frame, text="Executar", command=convert_to_excel)
+    button.pack()
+
+    window.mainloop()
