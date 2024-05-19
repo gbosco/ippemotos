@@ -20,6 +20,19 @@ def campo_real_formatado(entrada):
 
     return entrada
 
+def retorna_part_number(nome_peca):
+    client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+    messages=[
+        {"role": "user", "content": f"Me retorne o partnumber(Número de peça) mais provável para a peça:'{nome_peca}'. A mensagem de retorno deve conter apenas o partnumber, nada mais."}
+    ]
+
+    completion = client.chat.completions.create(
+                                            model='gpt-4o',
+                                            messages=messages,
+    )
+
+    return completion.choices[0].message.content
+
 def ai_SEO(nome_peca, tentativas = 0):
     if nome_peca == '' or tentativas > 5:
         return '\{\}'
@@ -33,7 +46,7 @@ def ai_SEO(nome_peca, tentativas = 0):
             messagebox.showerror('Erro ao carregar o arquivo da peça', nome_peca)
 
     if ret == '':
-        #client = OpenAI api_key Chave_da_API_AQUI
+        client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
         messages=[
             {"role": "system", "content": "Comporte-se como conhecedor de tecnologias de motores de busca como Google e Bing para melhor experiência de usuário."},
             {"role": "user", "content": f"A partir do título de produto '{nome_peca}', \
@@ -187,13 +200,14 @@ def convert_to_excel():
                            'Condição do item' : 'Usado',
                            'É kit' : 'Não'}
     
-    codigo_list = df_produto['Codigo'].to_list()
-
-    valor_list          = [codigo if v is None else v for v in dict_caracteristica.values() for codigo in codigo_list]
-    caracteristica_list = [c for c in dict_caracteristica.keys() for codigo in codigo_list]
+    peca_list_codigo = df_produto['Codigo'].to_list()
+    peca_list_titulo = df_produto['Titulo'].to_list()
+    
+    valor_list          = [retorna_part_number(peca_list_titulo[peca_list_codigo.index(sku)]) if v is None else v for v in dict_caracteristica.values() for sku in peca_list_codigo]
+    caracteristica_list = [c for c in dict_caracteristica.keys() for _ in peca_list_codigo]
     df_caracteristica = pd.DataFrame(
         {
-            'Codigo Produto' : codigo_list * len(dict_caracteristica),
+            'Codigo Produto' : peca_list_codigo * len(dict_caracteristica),
             'Caracteristica' : caracteristica_list,
             'Valor' : valor_list
         }
@@ -253,7 +267,10 @@ if __name__ == '__main__':
     frame4.pack(fill='x')
     ttk.Label(frame4, text="Selecione o modelo do chat GPT a ser usado:").pack(side='top')
     modelos_gpt = [
+        "gpt-4o",
+        "gpt-4o-2024-05-13",
         "gpt-4",
+        "gpt-4-turbo-2024-04-09"
         "gpt-4-0125-preview",
         "gpt-4-turbo-preview",
         "gpt-4-1106-preview",
