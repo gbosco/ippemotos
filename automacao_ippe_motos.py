@@ -15,7 +15,7 @@ while escolha_usuario != '0':
         3 - Ler arquivo e víncular ao Produto no Zord
         4 - Realizar envios por categoria do ML
 
-        0 - Para Sair
+        0 - Para Sair\n
         '''
         escolha_usuario = input(msg_menu)
         if escolha_usuario == '1':
@@ -25,7 +25,7 @@ while escolha_usuario != '0':
         if escolha_usuario == '3':
             driver = vincula_video_zord.executar(driver)
         if escolha_usuario == '4':
-            driver = envia_ml_zord.executar(driver, input('1 - Somente carregar envios. 2 - Somente preencher ficha técnica. ENTER para ambos'))
+            driver = envia_ml_zord.executar(driver, input('1 - Somente carregar envios. \n2 - Somente preencher ficha técnica. ENTER para ambos\n'))
     except Exception as ex:
         print('Erro:')
         print(ex)

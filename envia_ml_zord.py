@@ -1,5 +1,5 @@
 import re, time, sqlite3, os, time, pandas as pd
-from navegador import click, get_element_by_text, get_driver_navegador
+from navegador import click, get_element_by_text, get_driver_navegador, fechar_tudo_zord
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from pathlib import Path
@@ -14,6 +14,7 @@ def executar(driver = None, opcao_usuario = ''):
         driver = get_driver_navegador()
     driver.get('https://ippemoto.painel.magazord.com.br/')
     time.sleep(1)
+    fechar_tudo_zord(driver, 2)
 
     ###### Parte 1
     if opcao_usuario in ('1', ''):
@@ -40,6 +41,9 @@ def executar(driver = None, opcao_usuario = ''):
         click(driver, get_element_by_text(driver, '500'))
 
         for i in range(len(df_categorias)):
+            if df_categorias.loc[i, 'Peça'].upper().count('AMORTECEDOR') == 0:
+                continue
+
             if str(df_categorias.loc[i, 'Categoria']) == 'nan':
                 df_categorias.loc[i, 'Categoria'] = df_categorias.loc[i-1, 'Categoria']
             print('Procurando por:', df_categorias.loc[i, 'Peça'], ' - Categoria ser vinculado:', '-', df_categorias.loc[i, 'Categoria'])
@@ -86,11 +90,12 @@ def executar(driver = None, opcao_usuario = ''):
                 connection = sqlite3.connect(DB_FILE)
                 cursor = connection.cursor()
                 #Cria a tabela se e somente se ela não existir
-                cursor.execute(f'CREATE TABLE IF NOT EXISTS PRODUTO_CATEGORIA (PRODUTO TEXT(10) PRIMARY KEY,CATEGORIA TEXT(10))')
-                try:
-                    cursor.executemany('INSERT INTO PRODUTO_CATEGORIA (PRODUTO, CATEGORIA) VALUES (?,?)', produtos_encontrados)
-                except Exception as ex:
-                    print('Erro durante a inserção de produto/categoria no banco de dados:', ex)
+                cursor.execute(f'CREATE TABLE IF NOT EXISTS PRODUTO_CATEGORIA (PRODUTO TEXT(10) PRIMARY KEY, CATEGORIA TEXT(10))')
+                for produto_categoria in produtos_encontrados:
+                    try:
+                        cursor.execute('INSERT INTO PRODUTO_CATEGORIA (PRODUTO, CATEGORIA) VALUES (?,?)', produto_categoria)
+                    except Exception as ex:
+                        print('Erro durante a inserção de produto/categoria no banco de dados: ', produto_categoria[0], ' - ', produto_categoria[1])
 
                 connection.commit()
                 cursor.close()
@@ -152,7 +157,7 @@ def executar(driver = None, opcao_usuario = ''):
 
                         escolher_com_seta = False
                     
-                    if input.get_property('name').upper().count('POSITION'):
+                    if input.get_property('name').upper().count('dynamicFields/SIDE_POSITION'):
                         seletor_css_descricao_produto = 'input[name="produtoDerivacao/produto/nome"]:not([data-errorqtip])'
                         
                         if driver.find_element(By.CSS_SELECTOR, seletor_css_descricao_produto).get_property('value').upper().count('ESQUERD'):
@@ -164,6 +169,7 @@ def executar(driver = None, opcao_usuario = ''):
                             input.send_keys(Keys.TAB)                
                             escolher_com_seta = False
 
+                    if input.get_property('name').upper().count('dynamicFields/POSITION'):
                         if driver.find_element(By.CSS_SELECTOR, seletor_css_descricao_produto).get_property('value').upper().count('DIANTEIR'):
                             input.send_keys('Dianteiro')
                             input.send_keys(Keys.TAB)                
@@ -183,6 +189,7 @@ def executar(driver = None, opcao_usuario = ''):
             for el in driver.find_elements(By.CSS_SELECTOR, 'div.x-window-closable.x-resizable input[type="text"]'):
                 if not el.get_property('value') and not el.get_property('name') in ('customFields/customAttValue', 'customFields/customAttName'):
                     el.send_keys('1')
+                    el.send_keys(Keys.TAB)
             
             click(driver, get_element_by_text(driver, 'Gravar'))
 

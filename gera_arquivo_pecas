@@ -4,6 +4,12 @@ from tkinter import ttk
 import math, datetime, re, json, csv, os
 from openai import OpenAI
 from tkinter import messagebox
+'''
+dynamicFields/WIDTH - largura
+dynamicFields/LENGTH - comprimento
+dynamicFields/DEPTH - profundidade
+'''
+
 
 def primeira_maiuscula(texto:str):
 
